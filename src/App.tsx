@@ -7,6 +7,7 @@ import { ConflictEngineView } from './components/ConflictEngineView';
 import { AttendanceAuditView } from './components/AttendanceAuditView';
 import { ScheduleSwapView } from './components/ScheduleSwapView';
 import { ReportsExportView } from './components/ReportsExportView';
+import { AccountManagementView } from './components/AccountManagementView';
 
 function ModuleRouter() {
   const { state } = useAppState();
@@ -24,6 +25,8 @@ function ModuleRouter() {
       return <ScheduleSwapView />;
     case 'reports':
       return <ReportsExportView />;
+    case 'accounts':
+      return <AccountManagementView />;
     default:
       return <DashboardView />;
   }

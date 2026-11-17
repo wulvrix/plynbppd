@@ -6,18 +6,23 @@ import React, {
   useReducer,
   useState,
 } from 'react';
-import { createSeedState } from '../data/seedData';
+import { createSeedState, SEED_ACCOUNTS } from '../data/seedData';
 import {
   fetchAllSupabaseData,
   mapDbRoleToUiRole,
+  mapUiRoleToDbRole,
   sbAddStaffProfile,
   sbBulkUpsertSchedules,
   sbCheckIn,
   sbCheckOut,
+  sbCreateAccount,
   sbCreateSwapRequest,
+  sbDeleteProfile,
   sbDeleteSchedule,
+  sbDeleteSchedulesByUser,
   sbReviewSwapRequest,
   sbToggleStaffActive,
+  sbUpdateProfile,
   sbUpsertSchedule,
   signInWithNipOrEmail,
   signOutSupabase,
@@ -35,6 +40,7 @@ import {
   ShiftSession,
   StaffMember,
   SwapRequest,
+  UserAccount,
   UserRole,
 } from '../types/sijadpajak';
 import {
@@ -102,6 +108,45 @@ export type AppAction =
   | { type: 'ADD_STAFF'; staff: Omit<StaffMember, 'id'> }
   | { type: 'TOGGLE_STAFF_ACTIVE'; staffId: string }
   | {
+      type: 'CREATE_ACCOUNT';
+      account: Omit<UserAccount, 'id' | 'createdAt' | 'active'>;
+      includeInRoster?: boolean;
+    }
+  | {
+      type: 'UPDATE_ACCOUNT';
+      accountId: string;
+      patch: Partial<
+        Pick<
+          UserAccount,
+          | 'username'
+          | 'fullName'
+          | 'nip'
+          | 'email'
+          | 'role'
+          | 'jabatan'
+          | 'golongan'
+          | 'phone'
+          | 'active'
+        >
+      >;
+    }
+  | {
+      type: 'UPDATE_ACCOUNT_PASSWORD';
+      accountId: string;
+      newPassword: string;
+    }
+  | { type: 'DELETE_ACCOUNT'; accountId: string }
+  | {
+      type: 'DELETE_USER_SCHEDULES';
+      userId: string;
+      month?: string;
+      scheduleIds?: string[];
+    }
+  | {
+      type: 'LOGIN_LOCAL_ACCOUNT';
+      account: UserAccount;
+    }
+  | {
       type: 'UPSERT_HOLIDAY';
       holiday: HolidayEntry;
       clearAssignmentsOnDate?: boolean;
@@ -112,6 +157,7 @@ export type AppAction =
       type: 'HYDRATE_FROM_SUPABASE';
       payload: {
         staff: StaffMember[];
+        accounts: UserAccount[];
         locationIdMap: Record<LocationCode, string>;
         assignments: ScheduleAssignment[];
         attendance: AttendanceRecord[];
@@ -177,6 +223,7 @@ function reducer(state: AppState, action: AppAction): AppState {
       return {
         ...state,
         staff: action.payload.staff,
+        accounts: action.payload.accounts,
         locationIdMap: action.payload.locationIdMap,
         assignments: action.payload.assignments,
         attendance: action.payload.attendance,
@@ -185,6 +232,17 @@ function reducer(state: AppState, action: AppAction): AppState {
         activeRole: action.payload.activeRole ?? state.activeRole,
         activeStaffId: action.payload.activeStaffId ?? state.activeStaffId,
       };
+
+    case 'LOGIN_LOCAL_ACCOUNT': {
+      const acc = action.account;
+      const inRoster = state.staff.some((s) => s.id === acc.id);
+      return {
+        ...state,
+        activeRole: acc.role,
+        activeStaffId: inRoster ? acc.id : state.activeStaffId,
+        loggedInAccountId: acc.id,
+      };
+    }
 
     case 'SET_ROLE':
       return { ...state, activeRole: action.role };
@@ -483,15 +541,31 @@ function reducer(state: AppState, action: AppAction): AppState {
 
     case 'ADD_STAFF': {
       const id = `asn-${Date.now()}`;
+      const slug = action.staff.name.toLowerCase().replace(/[^a-z0-9]+/g, '.');
       const newStaff: StaffMember = { ...action.staff, id };
+      const newAccount: UserAccount = {
+        id,
+        username: action.staff.username || slug,
+        nip: action.staff.nip,
+        email: action.staff.email || `${slug}@bppd.sidoarjokab.go.id`,
+        fullName: action.staff.name,
+        role: 'ASN',
+        jabatan: action.staff.jabatan,
+        golongan: action.staff.golongan,
+        phone: action.staff.phone,
+        password: 'bppd123',
+        active: action.staff.active,
+        createdAt: nowIsoLocal(),
+      };
       return {
         ...state,
         staff: [...state.staff, newStaff],
+        accounts: [...state.accounts, newAccount],
         auditLogs: appendAudit(
           state,
           'MASTER_DATA',
           'Penambahan Pegawai ASN',
-          `Menambahkan ${newStaff.name} (NIP: ${newStaff.nip}) ke daftar petugas aktif.`
+          `Menambahkan ${newStaff.name} (NIP: ${newStaff.nip}) ke daftar petugas aktif & akun pengguna.`
         ),
       };
     }
@@ -504,6 +578,9 @@ function reducer(state: AppState, action: AppAction): AppState {
         staff: state.staff.map((s) =>
           s.id === action.staffId ? { ...s, active: !s.active } : s
         ),
+        accounts: state.accounts.map((acc) =>
+          acc.id === action.staffId ? { ...acc, active: !target.active } : acc
+        ),
         auditLogs: appendAudit(
           state,
           'MASTER_DATA',
@@ -511,6 +588,182 @@ function reducer(state: AppState, action: AppAction): AppState {
           `${target.name} diubah statusnya menjadi ${
             !target.active ? 'Aktif' : 'Non-Aktif'
           }.`
+        ),
+      };
+    }
+
+    case 'CREATE_ACCOUNT': {
+      const id =
+        action.account.role === 'ASN'
+          ? `asn-${Date.now()}`
+          : `acc-${Date.now()}`;
+      const newAccount: UserAccount = {
+        ...action.account,
+        id,
+        active: true,
+        createdAt: nowIsoLocal(),
+      };
+      const shouldAddRoster =
+        action.includeInRoster ?? action.account.role === 'ASN';
+      const nextStaff = shouldAddRoster
+        ? [
+            ...state.staff,
+            {
+              id,
+              username: newAccount.username,
+              name: newAccount.fullName,
+              nip: newAccount.nip,
+              email: newAccount.email,
+              role: mapUiRoleToDbRole(newAccount.role),
+              jabatan: newAccount.jabatan,
+              golongan: newAccount.golongan,
+              phone: newAccount.phone,
+              active: true,
+            },
+          ]
+        : state.staff;
+
+      return {
+        ...state,
+        accounts: [newAccount, ...state.accounts],
+        staff: nextStaff,
+        auditLogs: appendAudit(
+          state,
+          'MASTER_DATA',
+          'Pembuatan Akun Pengguna Baru',
+          `Admin membuat akun "${newAccount.username}" (${newAccount.fullName}, peran: ${newAccount.role}).`
+        ),
+      };
+    }
+
+    case 'UPDATE_ACCOUNT': {
+      const target = state.accounts.find((a) => a.id === action.accountId);
+      if (!target) return state;
+      const updatedAcc: UserAccount = { ...target, ...action.patch };
+      const nextAccounts = state.accounts.map((a) =>
+        a.id === action.accountId ? updatedAcc : a
+      );
+      const existsInStaff = state.staff.some((s) => s.id === action.accountId);
+      let nextStaff = state.staff.map((s) =>
+        s.id === action.accountId
+          ? {
+              ...s,
+              username: updatedAcc.username,
+              name: updatedAcc.fullName,
+              nip: updatedAcc.nip,
+              email: updatedAcc.email,
+              role: mapUiRoleToDbRole(updatedAcc.role),
+              jabatan: updatedAcc.jabatan,
+              golongan: updatedAcc.golongan,
+              phone: updatedAcc.phone,
+              active: updatedAcc.active,
+            }
+          : s
+      );
+      if (!existsInStaff && updatedAcc.role === 'ASN') {
+        nextStaff = [
+          ...nextStaff,
+          {
+            id: updatedAcc.id,
+            username: updatedAcc.username,
+            name: updatedAcc.fullName,
+            nip: updatedAcc.nip,
+            email: updatedAcc.email,
+            role: 'asn',
+            jabatan: updatedAcc.jabatan,
+            golongan: updatedAcc.golongan,
+            phone: updatedAcc.phone,
+            active: updatedAcc.active,
+          },
+        ];
+      }
+      return {
+        ...state,
+        accounts: nextAccounts,
+        staff: nextStaff,
+        auditLogs: appendAudit(
+          state,
+          'MASTER_DATA',
+          'Pembaruan Akun Pengguna',
+          `Memperbarui data/status akun "${updatedAcc.username}" (${updatedAcc.fullName}).`
+        ),
+      };
+    }
+
+    case 'UPDATE_ACCOUNT_PASSWORD': {
+      const target = state.accounts.find((a) => a.id === action.accountId);
+      if (!target) return state;
+      return {
+        ...state,
+        accounts: state.accounts.map((a) =>
+          a.id === action.accountId ? { ...a, password: action.newPassword } : a
+        ),
+        auditLogs: appendAudit(
+          state,
+          'SISTEM',
+          'Pembaruan Kata Sandi Akun',
+          `Admin mengatur ulang kata sandi untuk akun "${target.username}" (${target.fullName}).`
+        ),
+      };
+    }
+
+    case 'DELETE_ACCOUNT': {
+      const target = state.accounts.find((a) => a.id === action.accountId);
+      if (!target) return state;
+      const remainingAssignments = state.assignments.filter(
+        (a) => a.staffId !== action.accountId
+      );
+      return {
+        ...state,
+        accounts: state.accounts.filter((a) => a.id !== action.accountId),
+        staff: state.staff.filter((s) => s.id !== action.accountId),
+        assignments: remainingAssignments,
+        auditLogs: appendAudit(
+          state,
+          'MASTER_DATA',
+          'Penghapusan Akun Pengguna',
+          `Menghapus akun "${target.username}" (${target.fullName}) beserta seluruh jadwal terkait.`
+        ),
+      };
+    }
+
+    case 'DELETE_USER_SCHEDULES': {
+      const acc = state.accounts.find((a) => a.id === action.userId);
+      const stf = state.staff.find((s) => s.id === action.userId);
+      const ownerName = acc?.fullName || stf?.name || action.userId;
+
+      let removedCount = 0;
+      const nextAssignments = state.assignments.filter((a) => {
+        if (a.staffId !== action.userId) return true;
+        if (action.scheduleIds && action.scheduleIds.length > 0) {
+          const hit = action.scheduleIds.includes(a.id);
+          if (hit) removedCount += 1;
+          return !hit;
+        }
+        if (action.month) {
+          const hit = a.date.startsWith(action.month);
+          if (hit) removedCount += 1;
+          return !hit;
+        }
+        removedCount += 1;
+        return false;
+      });
+
+      const scopeLabel =
+        action.scheduleIds && action.scheduleIds.length > 0
+          ? `${removedCount} shift terpilih`
+          : action.month
+          ? `periode ${action.month} (${removedCount} shift)`
+          : `seluruh periode (${removedCount} shift)`;
+
+      return {
+        ...state,
+        assignments: nextAssignments,
+        auditLogs: appendAudit(
+          state,
+          'JADWAL',
+          `Penghapusan Jadwal Milik Akun`,
+          `Menghapus ${scopeLabel} milik akun ${ownerName}.`
         ),
       };
     }
@@ -587,6 +840,10 @@ interface AppContextValue {
     identifier: string,
     password: string
   ) => Promise<{ error?: string }>;
+  loginLocalAccount: (
+    identifier: string,
+    password: string
+  ) => { error?: string; account?: UserAccount };
   enterDemoMode: (presetRole?: UserRole) => void;
   logout: () => Promise<void>;
   refreshSupabaseData: () => Promise<void>;
@@ -626,6 +883,10 @@ function loadInitialState(): AppState {
         return {
           ...createSeedState(),
           ...parsed,
+          accounts:
+            Array.isArray(parsed.accounts) && parsed.accounts.length > 0
+              ? parsed.accounts
+              : SEED_ACCOUNTS,
           holidays:
             Array.isArray(parsed.holidays) && parsed.holidays.length > 0
               ? parsed.holidays
@@ -720,6 +981,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
           type: 'HYDRATE_FROM_SUPABASE',
           payload: {
             staff: data.staff,
+            accounts: data.accounts,
             locationIdMap: data.locationIdMap,
             assignments: data.assignments,
             attendance: data.attendance,
@@ -839,6 +1101,36 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       return res;
     },
     []
+  );
+
+  const loginLocalAccount = useCallback(
+    (identifier: string, password: string) => {
+      const q = identifier.trim().toLowerCase();
+      if (!q || !password) {
+        return { error: 'Masukkan username, NIP, atau email beserta kata sandi.' };
+      }
+      const matched = state.accounts.find(
+        (acc) =>
+          acc.username.toLowerCase() === q ||
+          acc.nip.toLowerCase() === q ||
+          acc.email.toLowerCase() === q
+      );
+      if (!matched) {
+        return { error: 'Akun tidak ditemukan. Periksa username, NIP, atau email Anda.' };
+      }
+      if (!matched.active) {
+        return { error: 'Akun ini sedang dinonaktifkan oleh Admin Sistem.' };
+      }
+      if (matched.password !== password) {
+        return { error: 'Kata sandi tidak sesuai.' };
+      }
+
+      localStorage.setItem(AUTH_MODE_KEY, 'demo');
+      setAuthMode('demo');
+      localDispatch({ type: 'LOGIN_LOCAL_ACCOUNT', account: matched });
+      return { account: matched };
+    },
+    [state.accounts]
   );
 
   const enterDemoMode = useCallback((presetRole?: UserRole) => {
@@ -1015,6 +1307,36 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
               }
               break;
             }
+            case 'CREATE_ACCOUNT': {
+              await sbCreateAccount(action.account);
+              break;
+            }
+            case 'UPDATE_ACCOUNT': {
+              await sbUpdateProfile({
+                id: action.accountId,
+                fullName: action.patch.fullName,
+                username: action.patch.username,
+                role: action.patch.role,
+                active: action.patch.active,
+              });
+              break;
+            }
+            case 'UPDATE_ACCOUNT_PASSWORD': {
+              localDispatch(action);
+              break;
+            }
+            case 'DELETE_ACCOUNT': {
+              await sbDeleteProfile(action.accountId);
+              break;
+            }
+            case 'DELETE_USER_SCHEDULES': {
+              await sbDeleteSchedulesByUser({
+                userId: action.userId,
+                month: action.month,
+                scheduleIds: action.scheduleIds,
+              });
+              break;
+            }
             case 'RESET_DEMO':
               localDispatch(action);
               break;
@@ -1058,6 +1380,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         isSyncing,
         dispatch,
         loginWithSupabase,
+        loginLocalAccount,
         enterDemoMode,
         logout,
         refreshSupabaseData: () => refreshSupabaseData(),

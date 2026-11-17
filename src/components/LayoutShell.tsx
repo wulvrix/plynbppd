@@ -14,6 +14,7 @@ import {
   RotateCcw,
   ShieldCheck,
   UserCheck,
+  UserCog,
   X,
 } from 'lucide-react';
 import { useAppState } from '../context/AppStateContext';
@@ -64,6 +65,7 @@ const NAV_ITEMS: Array<{
   { id: 'attendance', label: 'Absensi QR & Audit', icon: QrCode },
   { id: 'swaps', label: 'Tukar Jadwal', icon: ArrowLeftRight },
   { id: 'reports', label: 'Laporan & Export', icon: FileSpreadsheet },
+  { id: 'accounts', label: 'Manajemen Akun', icon: UserCog },
 ];
 
 export function LayoutShell({ children }: { children: React.ReactNode }) {
@@ -106,6 +108,9 @@ export function LayoutShell({ children }: { children: React.ReactNode }) {
   const activeNav = NAV_ITEMS.find((n) => n.id === state.activeModule);
   const currentRoleInfo = ROLE_OPTIONS.find((r) => r.role === state.activeRole);
   const activeAsn = state.staff.find((s) => s.id === state.activeStaffId);
+  const loggedAccount = state.accounts.find(
+    (a) => a.id === state.loggedInAccountId
+  );
 
   const handleRoleChange = (role: UserRole) => {
     dispatch({ type: 'SET_ROLE', role });
@@ -214,7 +219,9 @@ export function LayoutShell({ children }: { children: React.ReactNode }) {
               {authMode === 'supabase' && authEmail
                 ? authEmail
                 : state.activeRole === 'ASN'
-                ? activeAsn?.name
+                ? `${activeAsn?.name ?? ''} (@${activeAsn?.username ?? 'asn'})`
+                : loggedAccount
+                ? `${loggedAccount.fullName} (@${loggedAccount.username})`
                 : currentRoleInfo?.label}
             </div>
           </div>

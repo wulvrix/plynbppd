@@ -15,6 +15,7 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 CREATE TABLE IF NOT EXISTS public.profiles (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   auth_user_id UUID UNIQUE REFERENCES auth.users(id) ON DELETE SET NULL,
+  username TEXT UNIQUE,
   nip VARCHAR(24) UNIQUE NOT NULL,
   email TEXT UNIQUE NOT NULL,
   full_name TEXT NOT NULL,
@@ -110,7 +111,7 @@ CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON public.audit_logs(create
 -- 2. HELPER FUNCTIONS FOR RBAC & AUTH LINKING
 -- ============================================================================
 
--- Resolve email from NIP or Email before Supabase password login
+-- Resolve email from Username, NIP, or Email before Supabase password login
 CREATE OR REPLACE FUNCTION public.resolve_login_email(identifier TEXT)
 RETURNS TEXT
 LANGUAGE sql
@@ -119,7 +120,11 @@ SET search_path = public
 AS $$
   SELECT email
   FROM public.profiles
-  WHERE (LOWER(email) = LOWER(TRIM(identifier)) OR nip = TRIM(identifier))
+  WHERE (
+    LOWER(email) = LOWER(TRIM(identifier))
+    OR nip = TRIM(identifier)
+    OR LOWER(COALESCE(username, '')) = LOWER(TRIM(identifier))
+  )
     AND is_active = true
   LIMIT 1;
 $$;

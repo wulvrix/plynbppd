@@ -4,6 +4,7 @@ import {
   AuditLogEntry,
   StaffMember,
   SwapRequest,
+  UserAccount,
 } from '../types/sijadpajak';
 import {
   generateBalancedMonthSchedule,
@@ -15,6 +16,7 @@ import {
 export const SEED_STAFF: StaffMember[] = [
   {
     id: 'asn-1',
+    username: 'bellina',
     name: 'Bellina Reggita Sari',
     nip: '199801012022032001',
     email: 'bellina.sari@bppd.sidoarjokab.go.id',
@@ -26,6 +28,7 @@ export const SEED_STAFF: StaffMember[] = [
   },
   {
     id: 'asn-2',
+    username: 'diva',
     name: 'Diva Trifindaardy Palupi',
     nip: '199802022022032002',
     email: 'diva.palupi@bppd.sidoarjokab.go.id',
@@ -37,6 +40,7 @@ export const SEED_STAFF: StaffMember[] = [
   },
   {
     id: 'asn-3',
+    username: 'putri',
     name: 'Putri Ratih',
     nip: '199803032022032003',
     email: 'putri.ratih@bppd.sidoarjokab.go.id',
@@ -48,6 +52,7 @@ export const SEED_STAFF: StaffMember[] = [
   },
   {
     id: 'asn-4',
+    username: 'rahma',
     name: 'Rahma Agustin Rahayu',
     nip: '199804042022032004',
     email: 'rahma.rahayu@bppd.sidoarjokab.go.id',
@@ -59,6 +64,7 @@ export const SEED_STAFF: StaffMember[] = [
   },
   {
     id: 'asn-5',
+    username: 'novita',
     name: 'Novita',
     nip: '199805052022032005',
     email: 'novita@bppd.sidoarjokab.go.id',
@@ -70,6 +76,7 @@ export const SEED_STAFF: StaffMember[] = [
   },
   {
     id: 'asn-6',
+    username: 'viona',
     name: 'Viona',
     nip: '199806062022032006',
     email: 'viona@bppd.sidoarjokab.go.id',
@@ -81,6 +88,7 @@ export const SEED_STAFF: StaffMember[] = [
   },
   {
     id: 'asn-7',
+    username: 'reza',
     name: 'Reza',
     nip: '199907192023031001',
     email: 'reza@bppd.sidoarjokab.go.id',
@@ -90,6 +98,65 @@ export const SEED_STAFF: StaffMember[] = [
     phone: '0812-3456-1007',
     active: true,
   },
+];
+
+export const SEED_ACCOUNTS: UserAccount[] = [
+  {
+    id: 'acc-admin',
+    username: 'admin',
+    nip: '199001012015031001',
+    email: 'admin.sijadpajak@bppd.sidoarjokab.go.id',
+    fullName: 'Admin Sistem SIJADPAJAK',
+    role: 'ADMIN_SISTEM',
+    jabatan: 'Administrator Sistem Informasi',
+    golongan: 'Penata Muda Tk. I (III/b)',
+    phone: '0812-3456-2003',
+    password: 'admin123',
+    active: true,
+    createdAt: '2026-11-01T07:00:00',
+  },
+  {
+    id: 'acc-koord',
+    username: 'koordinator',
+    nip: '198504122010011001',
+    email: 'koordinator@bppd.sidoarjokab.go.id',
+    fullName: 'Koordinator Pelayanan BPPD',
+    role: 'KOORDINATOR',
+    jabatan: 'Koordinator Pelayanan Pajak Daerah',
+    golongan: 'Penata (III/c)',
+    phone: '0812-3456-2001',
+    password: 'koord123',
+    active: true,
+    createdAt: '2026-11-01T07:00:00',
+  },
+  {
+    id: 'acc-pimpinan',
+    username: 'pimpinan',
+    nip: '198008172006041002',
+    email: 'kabid.pdi@bppd.sidoarjokab.go.id',
+    fullName: 'Kepala Bidang PDI (Pimpinan)',
+    role: 'PIMPINAN',
+    jabatan: 'Kepala Bidang Pengolahan Data & Informasi',
+    golongan: 'Pembina (IV/a)',
+    phone: '0812-3456-2002',
+    password: 'pimpinan123',
+    active: true,
+    createdAt: '2026-11-01T07:00:00',
+  },
+  ...SEED_STAFF.map((s) => ({
+    id: s.id,
+    username: s.username || s.name.split(' ')[0].toLowerCase(),
+    nip: s.nip,
+    email: s.email || `${s.id}@bppd.sidoarjokab.go.id`,
+    fullName: s.name,
+    role: 'ASN' as const,
+    jabatan: s.jabatan,
+    golongan: s.golongan,
+    phone: s.phone,
+    password: 'bppd123',
+    active: s.active,
+    createdAt: '2026-11-01T07:00:00',
+  })),
 ];
 
 export function createSeedState(): AppState {
@@ -249,9 +316,11 @@ export function createSeedState(): AppState {
   return {
     activeRole: 'ADMIN_SISTEM',
     activeStaffId: 'asn-1',
+    loggedInAccountId: 'acc-admin',
     activeModule: 'dashboard',
     selectedMonth: '2026-11',
     staff: SEED_STAFF,
+    accounts: SEED_ACCOUNTS,
     locationIdMap: {
       KANTOR: '00000000-0000-0000-0000-000000000101',
       L: '00000000-0000-0000-0000-000000000102',

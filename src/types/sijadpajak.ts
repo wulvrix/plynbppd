@@ -19,6 +19,7 @@ export interface ServiceLocation {
 
 export interface StaffMember {
   id: string;
+  username?: string;
   name: string;
   nip: string;
   email?: string;
@@ -27,6 +28,21 @@ export interface StaffMember {
   golongan: string;
   phone: string;
   active: boolean;
+}
+
+export interface UserAccount {
+  id: string;
+  username: string;
+  nip: string;
+  email: string;
+  fullName: string;
+  role: UserRole;
+  jabatan: string;
+  golongan: string;
+  phone: string;
+  password: string;
+  active: boolean;
+  createdAt: string;
 }
 
 export type ShiftSession = 'PAGI_SORE' | 'SESI_1' | 'SESI_2';
@@ -126,16 +142,19 @@ export type ActiveModule =
   | 'conflicts'
   | 'attendance'
   | 'swaps'
-  | 'reports';
+  | 'reports'
+  | 'accounts';
 
 export type AuthMode = 'unauthenticated' | 'supabase' | 'demo';
 
 export interface AppState {
   activeRole: UserRole;
   activeStaffId: string;
+  loggedInAccountId?: string | null;
   activeModule: ActiveModule;
   selectedMonth: string; // YYYY-MM
   staff: StaffMember[];
+  accounts: UserAccount[];
   locationIdMap: Record<LocationCode, string>;
   holidays: HolidayEntry[];
   assignments: ScheduleAssignment[];

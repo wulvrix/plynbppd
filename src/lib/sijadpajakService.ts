@@ -7,9 +7,10 @@ import {
   ShiftSession,
   StaffMember,
   SwapRequest,
+  UserAccount,
   UserRole,
 } from '../types/sijadpajak';
-import { supabase } from './supabaseClient';
+import { createEphemeralSupabaseClient, supabase } from './supabaseClient';
 
 export function mapDbRoleToUiRole(dbRole?: string | null): UserRole {
   switch (dbRole) {
@@ -97,6 +98,7 @@ export async function signOutSupabase() {
 
 export interface SupabaseHydratedPayload {
   staff: StaffMember[];
+  accounts: UserAccount[];
   allProfiles: Array<{
     id: string;
     auth_user_id?: string | null;
@@ -180,6 +182,7 @@ export async function fetchAllSupabaseData(): Promise<SupabaseHydratedPayload> {
     )
     .map((p) => ({
       id: p.id,
+      username: p.username || (p.email ? p.email.split('@')[0] : p.nip),
       name: p.full_name,
       nip: p.nip,
       email: p.email,
@@ -189,6 +192,21 @@ export async function fetchAllSupabaseData(): Promise<SupabaseHydratedPayload> {
       phone: p.phone || '',
       active: Boolean(p.is_active),
     }));
+
+  const accounts: UserAccount[] = allProfiles.map((p) => ({
+    id: p.id,
+    username: p.username || (p.email ? p.email.split('@')[0] : p.nip),
+    nip: p.nip,
+    email: p.email,
+    fullName: p.full_name,
+    role: mapDbRoleToUiRole(p.role),
+    jabatan: p.position || 'ASN Pengolah Data dan Informasi',
+    golongan: p.golongan || 'Penata Muda (III/a)',
+    phone: p.phone || '',
+    password: '••••••••',
+    active: Boolean(p.is_active),
+    createdAt: p.created_at || new Date().toISOString(),
+  }));
 
   const assignments: ScheduleAssignment[] = (schedulesRes.data || []).map(
     (s) => ({
@@ -294,6 +312,7 @@ export async function fetchAllSupabaseData(): Promise<SupabaseHydratedPayload> {
 
   return {
     staff,
+    accounts,
     allProfiles,
     locationIdMap,
     assignments,
@@ -533,5 +552,108 @@ export async function sbToggleStaffActive(staffId: string, nextActive: boolean) 
     .from('profiles')
     .update({ is_active: nextActive })
     .eq('id', staffId);
+  if (error) throw error;
+}
+
+export async function sbCreateAccount(params: {
+  username: string;
+  nip: string;
+  email: string;
+  fullName: string;
+  role: UserRole;
+  jabatan: string;
+  golongan: string;
+  phone: string;
+  password: string;
+}) {
+  if (!supabase) throw new Error('Supabase belum dikonfigurasi');
+  const dbRole = mapUiRoleToDbRole(params.role);
+
+  let authUserId: string | null = null;
+  const tempClient = createEphemeralSupabaseClient();
+  if (tempClient && params.password) {
+    const { data: signUpData, error: signUpErr } = await tempClient.auth.signUp({
+      email: params.email,
+      password: params.password,
+      options: {
+        data: {
+          nip: params.nip,
+          full_name: params.fullName,
+          role: dbRole,
+          username: params.username,
+        },
+      },
+    });
+    if (signUpErr) throw signUpErr;
+    authUserId = signUpData.user?.id ?? null;
+  }
+
+  const { error } = await supabase.from('profiles').upsert(
+    {
+      ...(authUserId ? { auth_user_id: authUserId } : {}),
+      username: params.username,
+      nip: params.nip,
+      email: params.email,
+      full_name: params.fullName,
+      position: params.jabatan,
+      golongan: params.golongan,
+      phone: params.phone,
+      role: dbRole,
+      is_active: true,
+    },
+    { onConflict: 'email' }
+  );
+  if (error) throw error;
+}
+
+export async function sbUpdateProfile(params: {
+  id: string;
+  fullName?: string;
+  username?: string;
+  role?: UserRole;
+  active?: boolean;
+}) {
+  if (!supabase) throw new Error('Supabase belum dikonfigurasi');
+  const patch: Record<string, unknown> = {};
+  if (params.fullName !== undefined) patch.full_name = params.fullName;
+  if (params.username !== undefined) patch.username = params.username;
+  if (params.role !== undefined) patch.role = mapUiRoleToDbRole(params.role);
+  if (params.active !== undefined) patch.is_active = params.active;
+
+  const { error } = await supabase
+    .from('profiles')
+    .update(patch)
+    .eq('id', params.id);
+  if (error) throw error;
+}
+
+export async function sbDeleteProfile(profileId: string) {
+  if (!supabase) throw new Error('Supabase belum dikonfigurasi');
+  const { error } = await supabase
+    .from('profiles')
+    .delete()
+    .eq('id', profileId);
+  if (error) throw error;
+}
+
+export async function sbDeleteSchedulesByUser(params: {
+  userId: string;
+  month?: string;
+  scheduleIds?: string[];
+}) {
+  if (!supabase) throw new Error('Supabase belum dikonfigurasi');
+  let query = supabase.from('schedules').delete().eq('user_id', params.userId);
+
+  if (params.scheduleIds && params.scheduleIds.length > 0) {
+    query = query.in('id', params.scheduleIds);
+  } else if (params.month) {
+    const [y, m] = params.month.split('-').map(Number);
+    const lastDay = new Date(y, m, 0).getDate();
+    const start = `${params.month}-01`;
+    const end = `${params.month}-${String(lastDay).padStart(2, '0')}`;
+    query = query.gte('duty_date', start).lte('duty_date', end);
+  }
+
+  const { error } = await query;
   if (error) throw error;
 }

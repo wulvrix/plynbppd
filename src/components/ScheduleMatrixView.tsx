@@ -1156,41 +1156,80 @@ export function ScheduleMatrixView() {
               )}
             </div>
 
-            <div className="mt-6 flex flex-wrap items-center justify-end gap-2.5">
-              <button
-                type="button"
-                onClick={() => setEditingCell(null)}
-                className="px-4 py-2 text-xs font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50"
-              >
-                Batal
-              </button>
+            <div className="mt-6 flex flex-wrap items-center justify-between gap-2.5">
+              <div>
+                {(() => {
+                  const existingCellAssignment = state.assignments.find(
+                    (a) =>
+                      a.date === editingCell.date &&
+                      a.staffId === editingCell.staffId
+                  );
+                  if (!existingCellAssignment) return null;
+                  const targetPerson = state.staff.find(
+                    (s) => s.id === editingCell.staffId
+                  );
+                  return (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        dispatch({
+                          type: 'DELETE_ASSIGNMENT',
+                          assignmentId: existingCellAssignment.id,
+                        });
+                        pushToast({
+                          type: 'success',
+                          title: 'Jadwal Akun Dihapus',
+                          description: `Jadwal ${targetPerson?.name ?? ''} pada ${formatIndonesianDate(
+                            editingCell.date
+                          )} telah dihapus.`,
+                        });
+                        setEditingCell(null);
+                      }}
+                      className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-rose-700 bg-rose-50 border border-rose-200 rounded-lg hover:bg-rose-100"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Hapus Jadwal Ini</span>
+                    </button>
+                  );
+                })()}
+              </div>
 
-              {blockingConflicts.length > 0 ? (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => handleSaveAssignment(true)}
-                    className="px-3.5 py-2 text-xs font-semibold text-amber-800 bg-amber-100 border border-amber-300 rounded-lg hover:bg-amber-200"
-                  >
-                    Simpan Paksa (Uji Konflik)
-                  </button>
-                  <button
-                    type="button"
-                    disabled
-                    className="px-4 py-2 text-xs font-semibold text-white bg-slate-400 rounded-lg cursor-not-allowed"
-                  >
-                    Simpan Diblokir
-                  </button>
-                </>
-              ) : (
+              <div className="flex flex-wrap items-center justify-end gap-2.5">
                 <button
                   type="button"
-                  onClick={() => handleSaveAssignment(false)}
-                  className="px-4 py-2 text-xs font-semibold text-white bg-blue-900 rounded-lg hover:bg-blue-800"
+                  onClick={() => setEditingCell(null)}
+                  className="px-4 py-2 text-xs font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50"
                 >
-                  Simpan Perubahan Jadwal
+                  Batal
                 </button>
-              )}
+
+                {blockingConflicts.length > 0 ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => handleSaveAssignment(true)}
+                      className="px-3.5 py-2 text-xs font-semibold text-amber-800 bg-amber-100 border border-amber-300 rounded-lg hover:bg-amber-200"
+                    >
+                      Simpan Paksa (Uji Konflik)
+                    </button>
+                    <button
+                      type="button"
+                      disabled
+                      className="px-4 py-2 text-xs font-semibold text-white bg-slate-400 rounded-lg cursor-not-allowed"
+                    >
+                      Simpan Diblokir
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => handleSaveAssignment(false)}
+                    className="px-4 py-2 text-xs font-semibold text-white bg-blue-900 rounded-lg hover:bg-blue-800"
+                  >
+                    Simpan Perubahan Jadwal
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </div>

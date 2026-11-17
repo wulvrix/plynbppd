@@ -21,7 +21,7 @@ const SQL_MIGRATION_SNIPPET = `-- Jalankan file lengkap: supabase/migrations/001
 -- Publikasi Realtime, serta Seed Data 3 Lokasi, 7 ASN, dan Jadwal November 2026.`;
 
 export function LoginScreen() {
-  const { loginWithSupabase, enterDemoMode } = useAppState();
+  const { loginWithSupabase, loginLocalAccount, enterDemoMode } = useAppState();
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -30,19 +30,22 @@ export function LoginScreen() {
   const [sqlModalOpen, setSqlModalOpen] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  const handleSupabaseLogin = async (e: React.FormEvent) => {
+  const handleAccountLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
 
-    if (!isSupabaseConfigured) {
+    if (!identifier.trim() || !password) {
       setErrorMsg(
-        'Environment VITE_SUPABASE_URL dan VITE_SUPABASE_ANON_KEY belum dikonfigurasi. Gunakan Mode Demo Presentasi di sebelah kanan atau lengkapi variabel .env.'
+        'Masukkan Username, NIP, atau Email Resmi beserta kata sandi.'
       );
       return;
     }
 
-    if (!identifier.trim() || !password) {
-      setErrorMsg('Masukkan NIP atau Email Resmi Instansi beserta kata sandi.');
+    if (!isSupabaseConfigured) {
+      const localRes = loginLocalAccount(identifier, password);
+      if (localRes.error) {
+        setErrorMsg(localRes.error);
+      }
       return;
     }
 
@@ -106,34 +109,35 @@ export function LoginScreen() {
       {/* Main Content */}
       <main className="flex-1 flex items-center justify-center px-4 py-10">
         <div className="max-w-4xl w-full grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
-          {/* Left: Official NIP / Email Login Form */}
+          {/* Left: Official Username / NIP / Email Login Form */}
           <div className="lg:col-span-7 bg-white border border-slate-200 rounded-xl p-6 sm:p-8 flex flex-col justify-between">
             <div>
               <div className="text-xs font-semibold text-blue-900">
-                Autentikasi Resmi Instansi (RBAC)
+                Autentikasi Akun Pengguna (RBAC)
               </div>
               <h1 className="mt-1 text-2xl font-bold text-slate-900 tracking-tight">
                 Masuk ke Sistem SIJADPAJAK
               </h1>
               <p className="mt-1.5 text-xs text-slate-600 leading-relaxed">
-                Gunakan Nomor Induk Pegawai (NIP) atau Email Resmi BPPD
-                Kabupaten Sidoarjo yang terdaftar pada PostgreSQL Supabase.
+                Gunakan Username, Nomor Induk Pegawai (NIP), atau Email Resmi
+                BPPD Kabupaten Sidoarjo beserta kata sandi yang dibuat oleh Admin
+                Sistem.
               </p>
 
-              <form onSubmit={handleSupabaseLogin} className="mt-6 space-y-4">
+              <form onSubmit={handleAccountLogin} className="mt-6 space-y-4">
                 <div>
                   <label
                     htmlFor="login-identifier"
                     className="block text-xs font-semibold text-slate-700 mb-1.5"
                   >
-                    NIP atau Email Resmi Instansi
+                    Username, NIP, atau Email Resmi Instansi
                   </label>
                   <input
                     id="login-identifier"
                     type="text"
                     value={identifier}
                     onChange={(e) => setIdentifier(e.target.value)}
-                    placeholder="199801012022032001 atau bellina.sari@bppd.sidoarjokab.go.id"
+                    placeholder="Contoh: admin, bellina, atau 199801012022032001"
                     className="w-full px-3.5 py-2.5 text-sm border border-slate-300 rounded-lg bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-900/20 focus:border-blue-900"
                   />
                 </div>
@@ -152,7 +156,7 @@ export function LoginScreen() {
                       type="password"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
-                      placeholder="Masukkan kata sandi akun instansi"
+                      placeholder="Masukkan kata sandi akun"
                       className="w-full pl-10 pr-3.5 py-2.5 text-sm border border-slate-300 rounded-lg bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-900/20 focus:border-blue-900"
                     />
                   </div>
@@ -174,10 +178,48 @@ export function LoginScreen() {
                   <span>
                     {isSubmitting
                       ? 'Memverifikasi Kredensial...'
-                      : 'Masuk dengan Akun Instansi'}
+                      : 'Masuk dengan Akun'}
                   </span>
                 </button>
               </form>
+
+              {!isSupabaseConfigured && (
+                <div className="mt-4 rounded-lg bg-slate-50 border border-slate-200 p-3 text-[11px] text-slate-600 space-y-1">
+                  <div className="font-semibold text-slate-800">
+                    Kredensial Akun Bawaan (Mode Lokal / Uji Coba):
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-1 font-mono text-[11px]">
+                    <div>
+                      <span className="text-slate-500">Admin:</span>{' '}
+                      <span className="font-semibold text-slate-900">
+                        admin / admin123
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-slate-500">Koord:</span>{' '}
+                      <span className="font-semibold text-slate-900">
+                        koordinator / koord123
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-slate-500">ASN:</span>{' '}
+                      <span className="font-semibold text-slate-900">
+                        bellina / bppd123
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-slate-500">Pimpinan:</span>{' '}
+                      <span className="font-semibold text-slate-900">
+                        pimpinan / pimpinan123
+                      </span>
+                    </div>
+                  </div>
+                  <div className="text-[10px] text-slate-500 pt-0.5">
+                    Akun baru yang dibuat Admin melalui menu Manajemen Akun juga
+                    dapat langsung digunakan untuk masuk di formulir ini.
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="mt-6 pt-4 border-t border-slate-200 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">

@@ -22,3 +22,14 @@ export const supabase: SupabaseClient | null = isSupabaseConfigured
       },
     })
   : null;
+
+export function createEphemeralSupabaseClient(): SupabaseClient | null {
+  if (!isSupabaseConfigured) return null;
+  return createClient(supabaseUrl!, supabaseAnonKey!, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+    },
+  });
+}
